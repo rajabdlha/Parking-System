@@ -1,16 +1,27 @@
-# React + Vite
+## 🚗 Gestione Parcheggi - Brescia
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Questo progetto consiste nello sviluppo di un'applicazione web per la gestione e prenotazione dei parcheggi nella città di Brescia.
 
-Currently, two official plugins are available:
+### 🛠️ Tecnologie utilizzate
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+* **Frontend:** Vite
+* **Backend & Database:** Supabase
 
-## React Compiler
+### 📌 Descrizione del progetto
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+L'applicazione permette agli utenti di visualizzare su una mappa interattiva tutti i parcheggi disponibili nella zona di Brescia. I dati relativi ai parcheggi sono stati ottenuti da un dataset pubblico e integrati all'interno dell'applicazione.
 
-## Expanding the ESLint configuration
+### ⚙️ Funzionalità principali
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+* Visualizzazione dei parcheggi su mappa
+* Informazioni sui parcheggi disponibili
+* Sistema di prenotazione dei posti auto
+* Interfaccia semplice e intuitiva
+
+### 🗺️ Come funziona
+
+L'utente accede alla mappa, individua il parcheggio desiderato e può procedere con la prenotazione direttamente dall'applicazione. Tutte le operazioni vengono gestite tramite Supabase, che si occupa della persistenza dei dati e della gestione delle richieste.
+
+### 🎯 Obiettivo
+
+L'obiettivo del progetto è semplificare la ricerca e la prenotazione dei parcheggi in città, migliorando l'esperienza degli utenti e ottimizzando la gestione degli spazi disponibili.
