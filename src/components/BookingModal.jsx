@@ -1,11 +1,10 @@
 import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-
 const CATEGORY = {
-  auto:     { label: 'Auto',     color: '#60a5fa' },
+  auto:     { label: 'Auto',     color: '#3b82f6' },
   moto:     { label: 'Moto',     color: '#f59e0b' },
-  disabile: { label: 'Disabili', color: '#a78bfa' },
+  disabile: { label: 'Disabili', color: '#7c3aed' },
 }
 
 function calcolaCosto(dataOraStr, ore) {
@@ -26,37 +25,43 @@ function getNow() {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`
 }
 
-export default function BookingModal({ spot, parking, user, onClose, onBooked }) {
+export default function BookingModal({ spot, parking, user, balance, onClose, onBooked }) {
   const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState(null)
+  const [error, setError] = useState(null)
   const [dataOra, setDataOra] = useState(getNow)
-  const [durata,  setDurata]  = useState(1)
-  const [firstName, setFirstNameState] = useState('')
-  const [lastName,  setLastNameState]  = useState('')
+  const [durata, setDurata] = useState(1)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const meta = data?.user?.user_metadata || {}
-      setFirstNameState(meta.first_name || '')
-      setLastNameState(meta.last_name || '')
+      setFirstName(meta.first_name || '')
+      setLastName(meta.last_name || '')
     })
   }, [])
 
   const fullName = `${firstName} ${lastName}`.trim() || user?.email || ''
-
-  const cat   = CATEGORY[spot.type]
+  const cat = CATEGORY[spot.type]
   const costo = useMemo(() => calcolaCosto(dataOra, durata), [dataOra, durata])
+  const isAdmin = user?.role === 'admin' || user?.isAdmin
 
   async function handleConfirm() {
     if (!dataOra) { setError('Inserisci data e ora di inizio.'); return }
     if (durata < 1) { setError('Durata minima 1 ora.'); return }
+    if (costo === 0) { setError('Impossibile calcolare il costo. Controlla la data.'); return }
+
+    if (!isAdmin) {
+      if (balance == null || balance < costo) {
+        setError(`Saldo insufficiente. Hai ${balance ?? 0}€, servono ${costo}€.`)
+        return
+      }
+    }
 
     setLoading(true)
     setError(null)
 
-    const { error: err } = await supabase
-      .from('brescia_bookings')
-      .insert({
+    const { error: err } = await supabase.from('brescia_bookings').insert({
       user_id:      user.id,
       user_email:   user.email,
       first_name:   firstName,
@@ -69,140 +74,211 @@ export default function BookingModal({ spot, parking, user, onClose, onBooked })
       data_inizio:  dataOra,
       durata_ore:   durata,
       costo_totale: costo,
-      })
+    })
 
+    if (err) { setError(err.message); setLoading(false); return }
 
-    if (err) {
-      setError(err.message)
-      setLoading(false)
-      return
+    let newBalance = balance
+    if (!isAdmin) {
+      const { error: walletErr } = await supabase
+        .from('profiles')
+        .update({ wallet_balance: balance - costo })
+        .eq('id', user.id)
+
+      if (walletErr) {
+        console.error('Errore aggiornamento wallet:', walletErr.message)
+      } else {
+        newBalance = balance - costo
+      }
     }
 
-    onBooked()
+    onBooked(newBalance)
   }
 
   const inputStyle = {
-    width: '100%', padding: '9px 12px',
-    background: '#1c1c22', border: '1px solid #2a2a32',
-    borderRadius: 8, color: '#e8e8ea', fontSize: '14px',
-    boxSizing: 'border-box', outline: 'none',
+    width: '100%', padding: '10px 13px',
+    background: 'var(--input-bg)',
+    border: '1.5px solid var(--border)',
+    borderRadius: '9px',
+    color: 'var(--text-primary)',
+    fontSize: '14px', boxSizing: 'border-box', outline: 'none',
+    colorScheme: 'inherit',
+    transition: 'border-color 150ms',
   }
 
   const labelStyle = {
-    fontSize: '11px', color: '#6b7280',
-    display: 'block', marginBottom: 4,
+    fontSize: '11px', fontWeight: 600,
+    color: 'var(--text-secondary)',
+    display: 'block', marginBottom: '5px',
+    textTransform: 'uppercase', letterSpacing: '.06em',
   }
 
   return (
     <div
-      onClick={e => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
       style={{
         position: 'fixed', inset: 0, zIndex: 60,
-        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)',
+        background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
       }}
     >
       <div style={{
-        width: '100%', maxWidth: '400px',
-        background: '#16161a', border: '1px solid #2a2a32',
-        borderRadius: '16px', padding: '24px',
-        display: 'flex', flexDirection: 'column', gap: '12px',
+        width: '100%', maxWidth: '420px',
+        background: 'var(--bg-secondary)',
+        border: '1px solid var(--border)',
+        borderRadius: '20px', padding: '24px',
+        display: 'flex', flexDirection: 'column', gap: '14px',
+        boxShadow: 'var(--shadow-lg)',
       }}>
-        <h3 style={{ color: '#e8e8ea', fontSize: '18px', margin: 0 }}>
-          Conferma prenotazione
-        </h3>
 
-        {/* Riepilogo posto */}
-        <div style={{
-          background: '#1c1c22', border: '1px solid #2a2a32',
-          borderRadius: '12px', padding: '12px 16px',
-          display: 'flex', gap: '16px',
-        }}>
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: '10px', color: '#4a4a55', textTransform: 'uppercase', letterSpacing: '.08em' }}>Parcheggio</div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#e8e8ea', marginTop: 2 }}>{parking.nome}</div>
-          </div>
-          <div style={{ width: '1px', background: '#2a2a32' }} />
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: '10px', color: '#4a4a55', textTransform: 'uppercase', letterSpacing: '.08em' }}>Posto</div>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: '#10b981', fontFamily: 'DM Mono, monospace', marginTop: 2 }}>#{spot.label}</div>
-          </div>
-          <div style={{ width: '1px', background: '#2a2a32' }} />
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{ fontSize: '10px', color: '#4a4a55', textTransform: 'uppercase', letterSpacing: '.08em' }}>Tipo</div>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: cat.color, marginTop: 2 }}>{cat.label}</div>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ color: 'var(--text-primary)', fontSize: '18px', fontWeight: 800, margin: 0, letterSpacing: '-0.01em' }}>
+            Conferma prenotazione
+          </h3>
+          <button
+            onClick={onClose}
+            style={{
+              width: 30, height: 30, borderRadius: '50%',
+              background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+              color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '13px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >✕</button>
         </div>
 
-        {/* Nome utente — solo visualizzazione */}
         <div style={{
-          background: '#1c1c22', border: '1px solid #2a2a32',
-          borderRadius: '10px', padding: '10px 14px',
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: '12px', padding: '14px 16px',
+          display: 'flex', gap: '0',
         }}>
-          <div style={{ fontSize: '10px', color: '#4a4a55', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 4 }}>
+          {[
+            { label: 'Parcheggio', value: parking.nome, color: 'var(--text-primary)' },
+            { label: 'Posto', value: `#${spot.label}`, color: '#10b981', mono: true },
+            { label: 'Tipo', value: cat.label, color: cat.color },
+          ].map(({ label, value, color, mono }, i, arr) => (
+            <div key={label} style={{
+              flex: 1, textAlign: 'center',
+              borderRight: i < arr.length - 1 ? '1px solid var(--border)' : 'none',
+              padding: '0 8px',
+            }}>
+              <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.08em' }}>
+                {label}
+              </div>
+              <div style={{
+                fontSize: '13px', fontWeight: 700, color, marginTop: '3px',
+                fontFamily: mono ? 'DM Mono, monospace' : 'inherit',
+              }}>
+                {value}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: '10px', padding: '11px 14px',
+        }}>
+          <div style={{ fontSize: '9px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: '4px' }}>
             Intestato a
           </div>
-          <div style={{ fontSize: '15px', fontWeight: 600, color: '#e8e8ea' }}>
-            {fullName}
-          </div>
-          <div style={{ fontSize: '12px', color: '#6b7280', marginTop: 2 }}>
-            {user?.email}
-          </div>
+          <div style={{ fontSize: '14px', fontWeight: 700, color: 'var(--text-primary)' }}>{fullName}</div>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '1px' }}>{user?.email}</div>
         </div>
 
-        {/* Data e ora */}
         <div>
           <label style={labelStyle}>Data e ora di inizio</label>
-          <input
-            type="datetime-local"
-            value={dataOra}
-            onChange={e => setDataOra(e.target.value)}
-            style={{ ...inputStyle, colorScheme: 'dark' }}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              type="datetime-local"
+              value={dataOra}
+              onChange={(e) => setDataOra(e.target.value)}
+              style={{
+                ...inputStyle,
+                colorScheme: 'light dark',
+                paddingRight: '38px',
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+              }}
+              onFocus={(e) => e.target.style.borderColor = '#10b981'}
+              onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+            />
+            <span
+              onClick={() => document.querySelector('input[type="datetime-local"]')?.showPicker?.()}
+              style={{
+                position: 'absolute', right: '10px', top: '50%',
+                transform: 'translateY(-50%)',
+                fontSize: '18px', cursor: 'pointer',
+                pointerEvents: 'none',
+                userSelect: 'none',
+              }}
+            >
+              📅
+            </span>
+          </div>
         </div>
 
-        {/* Durata */}
         <div>
-          <label style={labelStyle}>Durata (ore)</label>
+          <label style={labelStyle}>Durata</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
-              onClick={() => setDurata(d => Math.max(1, d - 1))}
+              onClick={() => setDurata((d) => Math.max(1, d - 1))}
               style={{
-                width: 36, height: 36, borderRadius: 8,
-                background: '#1c1c22', border: '1px solid #2a2a32',
-                color: '#e8e8ea', fontSize: '18px', cursor: 'pointer',
+                width: 36, height: 36, borderRadius: '8px',
+                background: 'var(--bg-tertiary)',
+                border: '1.5px solid var(--border)',
+                color: 'var(--text-primary)', fontSize: '18px', cursor: 'pointer',
               }}
             >−</button>
-            <span style={{ fontSize: '20px', fontWeight: 700, color: '#e8e8ea', minWidth: '32px', textAlign: 'center' }}>
+            <span style={{
+              fontSize: '20px', fontWeight: 800,
+              color: 'var(--text-primary)',
+              minWidth: '32px', textAlign: 'center',
+              fontFamily: 'DM Mono, monospace',
+            }}>
               {durata}
             </span>
             <button
-              onClick={() => setDurata(d => Math.min(24, d + 1))}
+              onClick={() => setDurata((d) => Math.min(24, d + 1))}
               style={{
-                width: 36, height: 36, borderRadius: 8,
-                background: '#1c1c22', border: '1px solid #2a2a32',
-                color: '#e8e8ea', fontSize: '18px', cursor: 'pointer',
+                width: 36, height: 36, borderRadius: '8px',
+                background: 'var(--bg-tertiary)',
+                border: '1.5px solid var(--border)',
+                color: 'var(--text-primary)', fontSize: '18px', cursor: 'pointer',
               }}
             >+</button>
-            <span style={{ fontSize: '12px', color: '#6b7280' }}>
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
               {durata === 1 ? '1 ora' : `${durata} ore`}
             </span>
           </div>
         </div>
 
-        {/* Tariffe e costo */}
         <div style={{
-          background: '#1c1c22', border: '1px solid #2a2a32',
-          borderRadius: '10px', padding: '10px 14px',
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: '10px', padding: '12px 14px',
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
-          <div style={{ fontSize: '11px', color: '#6b7280' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
             <div>🌞 06:00–22:00 → <strong style={{ color: '#f59e0b' }}>3€/ora</strong></div>
-            <div>🌙 22:00–06:00 → <strong style={{ color: '#60a5fa' }}>1€/ora</strong></div>
+            <div>🌙 22:00–06:00 → <strong style={{ color: '#3b82f6' }}>1€/ora</strong></div>
+            {!isAdmin && balance != null && (
+              <div style={{
+                marginTop: '6px', fontSize: '11px', fontWeight: 700,
+                color: balance >= costo ? '#10b981' : '#ef4444',
+              }}>
+                💳 Saldo: {balance}€{costo > 0 && balance < costo ? ' — insufficiente' : ''}
+              </div>
+            )}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '11px', color: '#6b7280' }}>Totale stimato</div>
-            <div style={{ fontSize: '22px', fontWeight: 700, color: '#10b981', fontFamily: 'DM Mono, monospace' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Totale stimato</div>
+            <div style={{
+              fontSize: '26px', fontWeight: 800,
+              color: '#10b981',
+              fontFamily: 'DM Mono, monospace', lineHeight: 1,
+            }}>
               {costo > 0 ? `${costo}€` : '—'}
             </div>
           </div>
@@ -210,9 +286,11 @@ export default function BookingModal({ spot, parking, user, onClose, onBooked })
 
         {error && (
           <div style={{
-            color: '#fca5a5', padding: '8px 10px',
-            background: '#2d0d0d', border: '1px solid #7f1d1d',
-            borderRadius: 8, fontSize: '12px',
+            color: '#dc2626', padding: '9px 12px',
+            background: 'rgba(220,38,38,0.06)',
+            border: '1px solid rgba(220,38,38,0.25)',
+            borderRadius: '8px', fontSize: '12px',
+            display: 'flex', alignItems: 'center', gap: '6px',
           }}>
             ⚠️ {error}
           </div>
@@ -222,23 +300,30 @@ export default function BookingModal({ spot, parking, user, onClose, onBooked })
           <button
             onClick={onClose}
             style={{
-              flex: 1, padding: '10px',
-              background: '#1c1c22', border: '1px solid #2a2a32',
-              borderRadius: 8, color: '#6b7280', cursor: 'pointer', fontSize: '13px',
+              flex: 1, padding: '11px',
+              background: 'var(--bg-tertiary)',
+              border: '1.5px solid var(--border)',
+              borderRadius: '9px',
+              color: 'var(--text-secondary)',
+              cursor: 'pointer', fontSize: '13px', fontWeight: 600,
+              transition: 'all 150ms',
             }}
           >
             Annulla
           </button>
           <button
             onClick={handleConfirm}
-            disabled={loading}
+            disabled={loading || (!isAdmin && costo > 0 && balance != null && balance < costo)}
             style={{
-              flex: 1, padding: '10px',
-              background: '#10b981', border: 'none',
-              borderRadius: 8, color: '#fff',
+              flex: 2, padding: '11px',
+              background: loading ? 'var(--bg-tertiary)' : '#10b981',
+              border: 'none',
+              borderRadius: '9px',
+              color: loading ? 'var(--text-muted)' : '#fff',
               cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: '13px', fontWeight: 700,
-              opacity: loading ? 0.7 : 1,
+              boxShadow: loading ? 'none' : '0 2px 10px rgba(16,185,129,0.35)',
+              transition: 'all 150ms',
             }}
           >
             {loading ? '…' : `Prenota${costo > 0 ? ` · ${costo}€` : ''}`}
